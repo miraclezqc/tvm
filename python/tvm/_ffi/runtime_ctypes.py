@@ -217,6 +217,7 @@ class Device(ctypes.Structure):
         "stackvm": 1,
         "cpu": 1,
         "c": 1,
+        "saca": 2,
         "cuda": 2,
         "nvptx": 2,
         "cl": 4,

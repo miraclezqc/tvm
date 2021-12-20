@@ -253,6 +253,12 @@ TVM_REGISTER_TARGET_KIND("c", kDLCPU)
     .add_attr_option<String>("interface-api")
     .set_default_keys({"cpu"});
 
+TVM_REGISTER_TARGET_KIND("saca", kDLCUDA)
+    .add_attr_option<String>("mcpu")
+    .add_attr_option<String>("arch")
+    .add_attr_option<Bool>("system-lib")
+    .set_default_keys({"saca"});
+
 TVM_REGISTER_TARGET_KIND("cuda", kDLCUDA)
     .add_attr_option<String>("mcpu")
     .add_attr_option<String>("arch")
