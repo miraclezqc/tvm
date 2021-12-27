@@ -16,7 +16,7 @@
 # under the License.
 """Function data types."""
 
-from typing import Mapping, Union
+from typing import List, Mapping, Union
 
 import tvm._ffi
 import tvm.runtime
@@ -69,6 +69,22 @@ class PrimFunc(BaseFunc):
         self.__init_handle_by_constructor__(
             _ffi_api.PrimFunc, param_list, body, ret_type, buffer_map, attrs, span  # type: ignore
         )
+
+    def append_params(self, params):
+        param_list = []
+        buffer_map = {}
+        for x in params:
+            x = tvm.runtime.convert(x) if not isinstance(x, Object) else x
+            if isinstance(x, Buffer):
+                var = Var(x.name, dtype="handle")
+                param_list.append(var)
+                buffer_map[var] = x
+            elif isinstance(x, Var):
+                param_list.append(x)
+            else:
+                raise TypeError("params can only contain Var or Buffer")
+        return _ffi_api.Append_params(self, param_list, buffer_map)
+    
 
     def with_body(self, new_body, span=None):
         """Create a new PrimFunc with the same set signatures but a new body.

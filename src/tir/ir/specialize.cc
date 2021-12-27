@@ -370,9 +370,39 @@ PrimFunc Specialize(PrimFunc func, const Map<Var, ObjectRef>& param_map) {
   return PrimFuncSpecializer::Specialize(func, std::move(var_map));
 }
 
+PrimFunc Append_params(PrimFunc func, const Array<Var> params, const Map<tir::Var, Buffer> buffer_map) {
+  Array<Var> params_list;
+
+  for (const auto& var : func->params) {
+    params_list.push_back(var);
+  }
+  for (const auto& var : params) {
+    params_list.push_back(var);
+  }
+
+  Map<Var, Buffer> buffer_map_list;
+  for (const auto& it : func->buffer_map) {
+    const Var& var = it.first;
+    const Buffer& buffer = it.second;
+    buffer_map_list.Set(var, buffer);
+  }
+  for (const auto& it : buffer_map) {
+    const Var& var = it.first;
+    const Buffer& buffer = it.second;
+    buffer_map_list.Set(var, buffer);
+  }
+
+  PrimFuncNode* f_ptr = func.CopyOnWrite();
+  f_ptr->params = std::move(params_list);
+  f_ptr->buffer_map = std::move(buffer_map_list);
+  return func;
+}
+
+
 /**************** FFI ****************/
 
 TVM_REGISTER_GLOBAL("tir.Specialize").set_body_typed(Specialize);
+TVM_REGISTER_GLOBAL("tir.Append_params").set_body_typed(Append_params);
 
 }  // namespace tir
 }  // namespace tvm

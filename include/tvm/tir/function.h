@@ -227,6 +227,8 @@ class LinkedParam : public ObjectRef {
  */
 PrimFunc Specialize(PrimFunc func, const Map<Var, ObjectRef>& param_map);
 
+PrimFunc Append_params(PrimFunc func, const Array<tir::Var> params, const Map<tir::Var, Buffer> buffer_map);
+
 /*!
  * \brief PrimFunc specific attribute names.
  *
