@@ -73,6 +73,10 @@ class TaskSchedulerNode : public runtime::Object {
   Runner runner{nullptr};
   /*! \brief The database of the scheduler. */
   Database database{nullptr};
+  /*! \brief The cost model of the scheduler. */
+  Optional<CostModel> cost_model;
+  /*! \brief The list of measure callbacks of the scheduler. */
+  Array<MeasureCallback> measure_callbacks;
 
   /*! \brief The default desctructor. */
   virtual ~TaskSchedulerNode() = default;
@@ -82,6 +86,8 @@ class TaskSchedulerNode : public runtime::Object {
     v->Visit("builder", &builder);
     v->Visit("runner", &runner);
     v->Visit("database", &database);
+    v->Visit("cost_model", &cost_model);
+    v->Visit("measure_callbacks", &measure_callbacks);
   }
 
   /*! \brief Auto-tuning. */
@@ -158,9 +164,9 @@ class PyTaskSchedulerNode : public TaskSchedulerNode {
    */
   using FNextTaskId = runtime::TypedPackedFunc<int()>;
 
-  /*! \brief The packed function to the `Tune` funcion. */
+  /*! \brief The packed function to the `Tune` function. */
   FTune f_tune;
-  /*! \brief The packed function to the `InitializeTask` funcion. */
+  /*! \brief The packed function to the `InitializeTask` function. */
   FInitializeTask f_initialize_task;
   /*! \brief The packed function to the `SetTaskStopped` function. */
   FSetTaskStopped f_set_task_stopped;

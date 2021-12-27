@@ -47,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import variables
+from distutils.version import LooseVersion
 
 try:
     from tensorflow import lite as interpreter_wrapper
@@ -1825,9 +1826,38 @@ def _test_log(data):
 # ---
 
 
-def _test_sin(data):
+def _test_sin(data, quantized=False):
     """One iteration of sin"""
-    return _test_unary_elemwise(math_ops.sin, data)
+    with tf.Graph().as_default():
+        in_data = array_ops.placeholder(shape=data.shape, dtype="float32", name="in_0")
+
+        if quantized:
+            inq_data = tf.quantization.fake_quant_with_min_max_args(
+                in_data, min=1, max=6, name="inq_0"
+            )
+            input_range = {"inq_0": (1, 6)}
+            out = math_ops.sin(inq_data)
+            out = tf.quantization.fake_quant_with_min_max_args(out, min=1, max=6, name="out")
+            compare_tflite_with_tvm(
+                data,
+                "inq_0:0",
+                [inq_data],
+                [out],
+                quantized=True,
+                input_range=input_range,
+                experimental_new_converter=True,
+            )
+        else:
+            out = math_ops.sin(in_data)
+            compare_tflite_with_tvm(data, "in_0:0", [in_data], [out])
+
+
+def test_forward_sin():
+    """SIN"""
+    _test_sin(np.arange(-2.0, 4.0, dtype=np.float32), quantized=False)
+    _test_sin(np.arange(-2.0, 4.0, dtype=np.float32).reshape((2, 1, 3)), quantized=False)
+    _test_sin(np.arange(1, 240, 40, dtype=np.uint8), quantized=True)
+    _test_sin(np.arange(1, 240, 40, dtype=np.uint8).reshape((2, 1, 3)), quantized=True)
 
 
 #######################################################################
@@ -1882,7 +1912,6 @@ def test_all_unary_elemwise():
     _test_forward_unary_elemwise(_test_floor)
     _test_forward_unary_elemwise(_test_exp)
     _test_forward_unary_elemwise(_test_log)
-    _test_forward_unary_elemwise(_test_sin)
     _test_forward_unary_elemwise(_test_square)
     # ceil and cos come with TFLite 1.14.0.post1 fbs schema
     if package_version.parse(tf.VERSION) >= package_version.parse("1.14.0"):
@@ -3487,7 +3516,13 @@ def _test_abs(data, quantized=False):
 
         tflite_model_quant = _create_model()
         tflite_output = run_tflite_graph(tflite_model_quant, data)
-        in_node = ["serving_default_input_int8"]
+
+        # TFLite 2.6.x upgrade support
+        if tf.__version__ < LooseVersion("2.6.1"):
+            in_node = ["serving_default_input_int8"]
+        else:
+            in_node = ["tfl.quantize"]
+
         tvm_output = run_tvm_graph(tflite_model_quant, data, in_node)
         tvm.testing.assert_allclose(
             np.squeeze(tvm_output[0]), np.squeeze(tflite_output[0]), rtol=1e-5, atol=1e-2
@@ -4783,6 +4818,7 @@ if __name__ == "__main__":
     test_forward_tanh()
     test_forward_rsqrt()
     test_forward_neg()
+    test_forward_sin()
     test_forward_abs()
     test_forward_sqrt()
     test_forward_relu()

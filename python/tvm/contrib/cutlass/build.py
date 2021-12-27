@@ -23,6 +23,7 @@ import tvm
 from tvm import runtime, relay
 from tvm.contrib.nvcc import find_cuda_path, get_cuda_version
 from .gen_gemm import CutlassGemmProfiler
+from .gen_conv2d import CutlassConv2DProfiler
 
 logger = logging.getLogger("cutlass")
 
@@ -39,7 +40,7 @@ def _get_cutlass_path():
     return cutlass_path
 
 
-def _get_cutlass_compile_options(sm, threads):
+def _get_cutlass_compile_options(sm, threads, use_fast_math=False):
     cutlass_root = _get_cutlass_path()
     cutlass_include = os.path.join(cutlass_root, "include")
     cutlass_util_include = os.path.join(cutlass_root, "tools/util/include")
@@ -57,6 +58,8 @@ def _get_cutlass_compile_options(sm, threads):
         "-I" + cutlass_include,
         "-I" + cutlass_util_include,
     ]
+    if use_fast_math:
+        kwargs["options"].append("-DCUTLASS_USE_TANH_FOR_SIGMOID")
     cuda_path = find_cuda_path()
     cuda_ver = get_cuda_version(cuda_path)
     if cuda_ver >= 11.2:
@@ -65,7 +68,7 @@ def _get_cutlass_compile_options(sm, threads):
     return kwargs
 
 
-class GemmAnnotator(tvm.relay.ExprVisitor):
+class OpAnnotator(tvm.relay.ExprVisitor):
     """Annotates partitioned functions with shape and dtype information."""
 
     def __init__(self):
@@ -81,6 +84,13 @@ class GemmAnnotator(tvm.relay.ExprVisitor):
                 self.signature["arg%d_dtype" % i] = arg.checked_type.dtype
             self.signature["ret_shape"] = op.ret_type.shape
             self.signature["ret_dtype"] = op.ret_type.dtype
+            self.visit(op.body)
+
+        if str(op) == "nn.conv2d":
+            self.op_attrs = call.attrs
+
+        for arg in call.args:
+            self.visit(arg)
 
 
 def select_gemm_kernel(
@@ -125,6 +135,8 @@ def handle_batch_matmul(
     else:
         raise ValueError("%s pattern is not implemented." % op_type)
 
+    assert "tn_align" in out["name"], "Only supports (row_major, col_major) input layout for now."
+
     return {
         "batch": arg0_shape[0],
         "batch_stride_A": arg0_shape[1] * arg0_shape[2],
@@ -132,6 +144,9 @@ def handle_batch_matmul(
         "batch_stride_C": arg0_shape[1] * arg1_shape[1],
         "cutlass_op_def": cutlass_op_def,
         "cutlass_op_name": out["name"],
+        "lda": "K",
+        "ldb": "K",
+        "ldc": "N",
     }
 
 
@@ -155,6 +170,64 @@ def handle_dense(
         cutlass_op_def = out["opdef_bias_relu"]
     elif "cutlass.dense_bias_gelu" in op_type:
         cutlass_op_def = out["opdef_bias_gelu"]
+    else:
+        raise ValueError("%s pattern is not implemented." % op_type)
+
+    assert "tn_align" in out["name"], "Only supports (row_major, col_major) input layout for now."
+
+    return {
+        "cutlass_op_def": cutlass_op_def,
+        "cutlass_op_name": out["name"],
+        "lda": "K",
+        "ldb": "K",
+        "ldc": "N",
+    }
+
+
+def handle_conv2d(
+    cutlass_profiler,
+    op_type,
+    d_shape,
+    w_shape,
+    padding,
+    strides,
+    dilation,
+    out_dtype,
+    profile_all,
+    use_multiprocessing,
+):
+    """Profile and select a kernel for conv2d op workload."""
+    if any(isinstance(s, tvm.tir.Any) for s in d_shape):
+        out = cutlass_profiler.get_default(out_dtype)
+        logger.info("Picked the default kernel %s", out["name"])
+    else:
+        out = cutlass_profiler.profile(
+            d_shape,
+            w_shape,
+            padding,
+            strides,
+            dilation,
+            out_dtype,
+            profile_all=profile_all,
+            use_multiprocessing=use_multiprocessing,
+        )
+        if profile_all:
+            logger.info("The best kernel is %s", out["name"])
+        else:
+            logger.info("Picked the first kernel found %s", out["name"])
+
+    if op_type == "cutlass.conv2d":
+        cutlass_op_def = out["opdef"]
+    elif op_type == "cutlass.conv2d_bias":
+        cutlass_op_def = out["opdef_bias"]
+    elif op_type == "cutlass.conv2d_bias_relu":
+        cutlass_op_def = out["opdef_bias_relu"]
+    elif op_type == "cutlass.conv2d_bias_sigmoid":
+        cutlass_op_def = out["opdef_bias_sigmoid"]
+    elif op_type == "cutlass.conv2d_bias_silu":
+        cutlass_op_def = out["opdef_bias_silu"]
+    elif op_type == "cutlass.conv2d_bias_hardswish":
+        cutlass_op_def = out["opdef_bias_hardswish"]
     else:
         raise ValueError("%s pattern is not implemented." % op_type)
 
@@ -195,12 +268,13 @@ def tune_cutlass_kernels(mod, sm, profile_all=True, use_multiprocessing=False, t
     num_cutlass_partition : int
         The number of partitioned functions created for CUTLASS.
     """
-    cutlass_profiler = CutlassGemmProfiler(sm, _get_cutlass_path(), tmp_dir)
+    gemm_profiler = CutlassGemmProfiler(sm, _get_cutlass_path(), tmp_dir)
+    conv2d_profiler = CutlassConv2DProfiler(sm, _get_cutlass_path(), tmp_dir)
     num_cutlass_partition = 0
     for var in mod.get_global_vars():
         fun_name = var.name_hint
         func = mod[fun_name]
-        annotator = GemmAnnotator()
+        annotator = OpAnnotator()
         if "cutlass" in fun_name:
             num_cutlass_partition += 1
             annotator.visit(func)
@@ -213,10 +287,28 @@ def tune_cutlass_kernels(mod, sm, profile_all=True, use_multiprocessing=False, t
             arg0_shape = new_attrs["arg0_shape"]
             arg1_shape = new_attrs["arg1_shape"]
 
-            if "batch_matmul" in op_type:
+            if "conv2d" in op_type:
+                new_attrs["padding"] = annotator.op_attrs.padding
+                new_attrs["strides"] = annotator.op_attrs.strides
+                new_attrs["dilation"] = annotator.op_attrs.dilation
+                new_attrs.update(
+                    handle_conv2d(
+                        conv2d_profiler,
+                        op_type,
+                        arg0_shape,
+                        arg1_shape,
+                        annotator.op_attrs.padding,
+                        annotator.op_attrs.strides,
+                        annotator.op_attrs.dilation,
+                        out_dtype,
+                        profile_all,
+                        use_multiprocessing,
+                    )
+                )
+            elif "batch_matmul" in op_type:
                 new_attrs.update(
                     handle_batch_matmul(
-                        cutlass_profiler,
+                        gemm_profiler,
                         op_type,
                         arg0_shape,
                         arg1_shape,
@@ -228,7 +320,7 @@ def tune_cutlass_kernels(mod, sm, profile_all=True, use_multiprocessing=False, t
             elif "dense" in op_type:
                 new_attrs.update(
                     handle_dense(
-                        cutlass_profiler,
+                        gemm_profiler,
                         op_type,
                         arg0_shape,
                         arg1_shape,
@@ -239,13 +331,6 @@ def tune_cutlass_kernels(mod, sm, profile_all=True, use_multiprocessing=False, t
                 )
             else:
                 raise ValueError("%s unsupported composite" % op_type)
-
-            if new_attrs["cutlass_op_name"].find("_tn_align") > 0:
-                new_attrs["lda"] = "K"
-                new_attrs["ldb"] = "K"
-                new_attrs["ldc"] = "N"
-            else:
-                raise ValueError("%s unsupported operation" % new_attrs["cutlass_op_name"])
 
             new_attrs = tvm.ir.make_node("DictAttrs", **new_attrs)
             new_func = relay.Function(
@@ -260,7 +345,9 @@ def tune_cutlass_kernels(mod, sm, profile_all=True, use_multiprocessing=False, t
     return mod, num_cutlass_partition
 
 
-def build_cutlass_kernels(lib, sm, tmp_dir="./tmp", lib_path="compile.so", threads=-1):
+def build_cutlass_kernels(
+    lib, sm, tmp_dir="./tmp", lib_path="compile.so", threads=-1, use_fast_math=False
+):
     """Compile CUTLASS kernels in lib and return the runtime module ready to run.
 
     Parameters
@@ -282,18 +369,27 @@ def build_cutlass_kernels(lib, sm, tmp_dir="./tmp", lib_path="compile.so", threa
         The number of threads to use for compiling generated kernels. Only available for
         CUDA 11.2 or later. Use all physical cores by default.
 
+    use_fast_math : bool, optional
+        Whether or not to use faster but less accurate math intrinsics.
+
     Returns
     -------
     updated_lib : runtime.Module
         The updated module with compiled cutlass kernels.
     """
-    kwargs = _get_cutlass_compile_options(sm, threads)
+    kwargs = _get_cutlass_compile_options(sm, threads, use_fast_math)
     lib.export_library(lib_path, workspace_dir=tmp_dir, **kwargs)
     return runtime.load_module(lib_path)
 
 
 def build_cutlass_kernels_vm(
-    vm_exec, sm, tmp_dir="./tmp", lib_path="compile.so", vmcode_path="vmcode.ro", threads=-1
+    vm_exec,
+    sm,
+    tmp_dir="./tmp",
+    lib_path="compile.so",
+    vmcode_path="vmcode.ro",
+    threads=-1,
+    use_fast_math=False,
 ):
     """Compile CUTLASS kernels in vm_exec and return a VM executable ready to run.
 
@@ -319,13 +415,16 @@ def build_cutlass_kernels_vm(
         The number of threads to use for compiling generated kernels. Only available for
         CUDA 11.2 or later. Use all physical cores by default.
 
+    use_fast_math : bool, optional
+        Whether or not to use faster but less accurate math intrinsics.
+
     Returns
     -------
     updated_vm_exec: vm.Executable
         The updated exectuable with compiled cutlass kernels.
     """
     code, lib = vm_exec.save()
-    kwargs = _get_cutlass_compile_options(sm, threads)
+    kwargs = _get_cutlass_compile_options(sm, threads, use_fast_math)
     lib_path = os.path.join(tmp_dir, lib_path)
     vmcode_path = os.path.join(tmp_dir, vmcode_path)
     lib.export_library(lib_path, workspace_dir=tmp_dir, **kwargs)

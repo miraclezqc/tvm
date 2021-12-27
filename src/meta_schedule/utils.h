@@ -22,8 +22,12 @@
 #include <dmlc/memory_io.h>
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/builder.h>
+#include <tvm/meta_schedule/cost_model.h>
 #include <tvm/meta_schedule/database.h>
+#include <tvm/meta_schedule/feature_extractor.h>
+#include <tvm/meta_schedule/measure_callback.h>
 #include <tvm/meta_schedule/runner.h>
+#include <tvm/meta_schedule/schedule_rule.h>
 #include <tvm/meta_schedule/search_strategy.h>
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/meta_schedule/task_scheduler.h>
@@ -43,6 +47,9 @@
 
 namespace tvm {
 namespace meta_schedule {
+
+/*! \brief The type of the random state */
+using TRandState = support::LinearCongruentialEngine::TRandState;
 
 /*!
  * \brief Read lines from a json file.
@@ -206,6 +213,24 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
     results.push_back(support::LinearCongruentialEngine(rand_state).ForkSeed());
   }
   return results;
+}
+
+/*!
+ * \brief Concatenate strings
+ * \param strs The strings to concatenate
+ * \param delim The delimiter
+ * \return The concatenated string
+ */
+inline std::string Concat(const Array<String>& strs, const std::string& delim) {
+  if (strs.empty()) {
+    return "";
+  }
+  std::ostringstream os;
+  os << strs[0];
+  for (int i = 1, n = strs.size(); i < n; ++i) {
+    os << delim << strs[i];
+  }
+  return os.str();
 }
 
 }  // namespace meta_schedule
