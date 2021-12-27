@@ -168,7 +168,7 @@ TVM_DLL void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_sre
  * \param self The state of the schedule
  * \param loop_sref The sref of the loop to be parallelized
  */
-TVM_DLL void Parallel(ScheduleState self, const StmtSRef& loop_sref);
+TVM_DLL void Parallel(ScheduleState self, const StmtSRef& loop_sref, bool force = 0);
 /*!
  * \brief Vectorize the input loop. It requires:
  * 1) The scope block that the loop is in should have stage-pipeline property
@@ -341,6 +341,8 @@ TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int bu
 /******** Schedule: Blockize & Tensorize ********/
 /******** Schedule: Annotation ********/
 /******** Schedule: Misc ********/
+TVM_DLL void LevelSchedule(ScheduleState self, const StmtSRef& loop_sref, int level_number,
+                           const Buffer& level_num_buf, const Buffer& level_idx_buf);
 
 }  // namespace tir
 }  // namespace tvm

@@ -185,13 +185,13 @@ void TracedScheduleNode::Reorder(const Array<LoopRV>& ordered_loop_rvs) {
 
 /******** Schedule: Manipulate ForKind ********/
 
-void TracedScheduleNode::Parallel(const LoopRV& loop_rv) {
-  ConcreteScheduleNode::Parallel(loop_rv);
+void TracedScheduleNode::Parallel(const LoopRV& loop_rv, bool force) {
+  ConcreteScheduleNode::Parallel(loop_rv, force);
 
   static const InstructionKind& kind = InstructionKind::Get("Parallel");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{loop_rv},
-                                      /*attrs=*/{},
+                                      /*attrs=*/{Bool(force)},
                                       /*outputs=*/{}));
 }
 
@@ -334,6 +334,16 @@ void TracedScheduleNode::StorageAlign(const BlockRV& block_rv, int buffer_index,
 /******** Schedule: Annotation ********/
 
 /******** Schedule: Misc ********/
+void TracedScheduleNode::LevelSchedule(const LoopRV& loop_rv, int level_number,
+                   const Buffer& level_num_buf, const Buffer& level_idx_buf) {
+  ConcreteScheduleNode::LevelSchedule(loop_rv, level_number, level_num_buf, level_idx_buf);
+  static const InstructionKind& kind = InstructionKind::Get("LevelSchedule");
+  trace_->Append(/*inst=*/Instruction(
+      /*kind=*/kind,
+      /*inputs=*/{loop_rv},
+      /*attrs=*/{Integer(level_number), level_num_buf, level_idx_buf},
+      /*outputs=*/{}));
+}
 
 void TracedScheduleNode::EnterPostproc() {
   ConcreteScheduleNode::EnterPostproc();

@@ -288,7 +288,7 @@ class ScheduleNode : public runtime::Object {
    * bindings
    * \param loop_rv The loop to be parallelized
    */
-  virtual void Parallel(const LoopRV& loop_rv) = 0;
+  virtual void Parallel(const LoopRV& loop_rv, bool force = 0) = 0;
   /*!
    * \brief Vectorize the input loop. It requires:
    * 1) The scope block that the loop is in should have stage-pipeline property
@@ -451,6 +451,8 @@ class ScheduleNode : public runtime::Object {
   /******** Schedule: Blockize & Tensorize ********/
   /******** Schedule: Annotation ********/
   /******** Schedule: Misc ********/
+  virtual void LevelSchedule(const LoopRV& block_rv, int level_number,
+                             const Buffer& level_num_buf, const Buffer& level_idx_buf) = 0;
   /*! \brief A no-op that marks the start of postprocessing phase of scheduling */
   virtual void EnterPostproc() = 0;
 };

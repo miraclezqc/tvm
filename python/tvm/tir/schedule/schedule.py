@@ -27,6 +27,8 @@ from . import _ffi_api
 from .state import ScheduleState, StmtSRef, _parse_debug_mask, _parse_mod
 from .trace import Trace
 
+from tvm.tir.expr import Var
+from tvm.tir.buffer import Buffer
 
 @register_error
 class ScheduleError(TVMError):
@@ -641,7 +643,7 @@ class Schedule(Object):
 
     ########## Schedule: Manipulate ForKind ##########
 
-    def parallel(self, loop: LoopRV) -> None:
+    def parallel(self, loop: LoopRV, force = False) -> None:
         """Parallelize the input loop. It requires:
         1) The scope block that the loop is in should have stage-pipeline property
         2) All the blocks under the loop are complete blocks or reduction blocks, and have affine
@@ -693,7 +695,7 @@ class Schedule(Object):
                             B[vi, vj] = A[vi, vj] * 2.0
 
         """
-        _ffi_api.ScheduleParallel(self, loop)  # type: ignore # pylint: disable=no-member
+        _ffi_api.ScheduleParallel(self, loop, force)  # type: ignore # pylint: disable=no-member
 
     def vectorize(self, loop: LoopRV) -> None:
         """Vectorize the input loop. It requires:
@@ -1633,6 +1635,43 @@ class Schedule(Object):
     ########## Schedule: Annotation ##########
 
     ########## Schedule: Misc ##########
+    def level_schedule(self, block: LoopRV, level_number: int, level_num_buf: Buffer, level_idx_buf: Buffer) -> None:
+        """Exploiting parallelism through level scheduling method. It requires:
+        1) There is at most one block 
+        2) 
+        Parameters
+        ----------
+        block : BlockRV
+            The block with serial iteration.
+        level_number: int
+            The number of level set after level scheduling
+        level_set: List[int]
+        level_number: List[int]
+        Returns
+        -------
+        None : 
+
+        Examples
+        --------
+        Before level_schedule, in TensorIR, the IR is:
+        .. code-block:: python
+            @tvm.script.tir
+            def before_
+
+        Create the schedule and cache_read:
+        .. code-block:: python
+            sch = tir.Schedule(before_)
+            block_b = sch.get_block("B")
+            sch.
+            print(tvm.script.asscript(sch.mod["main"]))
+        After applying level_schedule, the IR becomes:
+        .. code-block:: python
+            @tvm.script.tir
+            def after_
+        """
+        return _ffi_api.ScheduleLevelSchedule(  # type: ignore # pylint: disable=no-member
+            self, block, level_number, level_num_buf, level_idx_buf
+        )
 
     def enter_postproc(self) -> None:
         """A no-op that marks the start of postprocessing phase of scheduling"""

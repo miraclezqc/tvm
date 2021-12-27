@@ -183,6 +183,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStorageAlign")
 /******** (FFI) Blockize & Tensorize ********/
 /******** (FFI) Annotation ********/
 /******** (FFI) Misc ********/
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleLevelSchedule")
+    .set_body_method<Schedule>(&ScheduleNode::LevelSchedule);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
     .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);
 

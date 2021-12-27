@@ -143,7 +143,7 @@ void CheckParallelizability(const ScheduleState& self, const For& loop, ForKind 
  * `for_kind` is `kThreadBinding`
  */
 void ParallelizeComputation(const ScheduleState& self, const StmtSRef& loop_sref, ForKind for_kind,
-                            Optional<IterVar> thread_axis) {
+                            Optional<IterVar> thread_axis, bool force = 0) {
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
 
   /*
@@ -157,8 +157,8 @@ void ParallelizeComputation(const ScheduleState& self, const StmtSRef& loop_sref
    */
   // Step 1. Check whether the subtree rooted from the `loop` in sref tree has compact data flow.
   GetScopeRoot(self, loop_sref,  //
-               /*require_stage_pipeline=*/true,
-               /*require_subtree_compact_dataflow=*/true);
+               /*require_stage_pipeline=*/force == 0 ? true: false,
+               /*require_subtree_compact_dataflow=*/force == 0 ? true: false);
 
   // Step 2. Check whether the loop can be parallelized/vectorized/bound with regard to each
   // underlying block.
@@ -174,8 +174,8 @@ void ParallelizeComputation(const ScheduleState& self, const StmtSRef& loop_sref
   self->Replace(loop_sref, For(new_loop), {});
 }
 
-void Parallel(ScheduleState self, const StmtSRef& loop_sref) {
-  ParallelizeComputation(self, loop_sref, ForKind::kParallel, NullOpt);
+void Parallel(ScheduleState self, const StmtSRef& loop_sref, bool force) {
+  ParallelizeComputation(self, loop_sref, ForKind::kParallel, NullOpt, force);
 }
 
 void Vectorize(ScheduleState self, const StmtSRef& loop_sref) {

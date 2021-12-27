@@ -63,7 +63,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factor_rvs) final;
   void Reorder(const Array<LoopRV>& ordered_loop_rvs) final;
   /******** Schedule: Manipulate ForKind ********/
-  void Parallel(const LoopRV& loop_rv) final;
+  void Parallel(const LoopRV& loop_rv, bool force = 0) final;
   void Vectorize(const LoopRV& loop_rv) final;
   void Bind(const LoopRV& loop_rv, const String& thread_axis) final;
   void Unroll(const LoopRV& loop_rv) final;
@@ -87,6 +87,8 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   /******** Schedule: Blockize & Tensorize ********/
   /******** Schedule: Annotation ********/
   /******** Schedule: Misc ********/
+  void LevelSchedule(const LoopRV& loop_rv, int level_number,
+                     const Buffer& level_num_buf, const Buffer& level_idx_buf) final;
   void EnterPostproc() final;
 };
 

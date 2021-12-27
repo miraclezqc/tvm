@@ -97,7 +97,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) override;
   void Reorder(const Array<LoopRV>& ordered_loop_rvs) override;
   /******** Schedule: Manipulate ForKind ********/
-  void Parallel(const LoopRV& loop_rv) override;
+  void Parallel(const LoopRV& loop_rv, bool force = 0) override;
   void Vectorize(const LoopRV& loop_rv) override;
   void Bind(const LoopRV& loop_rv, const String& thread_axis) override;
   void Unroll(const LoopRV& loop_rv) override;
@@ -121,6 +121,8 @@ class ConcreteScheduleNode : public ScheduleNode {
   /******** Schedule: Blockize & Tensorize ********/
   /******** Schedule: Annotation ********/
   /******** Schedule: Misc ********/
+  void LevelSchedule(const LoopRV& loop_rv, int level_number,
+                     const Buffer& level_num_buf, const Buffer& level_idx_buf) override;
   void EnterPostproc() override {}
 
  protected:

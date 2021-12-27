@@ -421,9 +421,9 @@ void ConcreteScheduleNode::Reorder(const Array<LoopRV>& ordered_loop_rvs) {
 
 /******** Schedule: Manipulate ForKind ********/
 
-void ConcreteScheduleNode::Parallel(const LoopRV& loop_rv) {
+void ConcreteScheduleNode::Parallel(const LoopRV& loop_rv, bool force) {
   TVM_TIR_SCHEDULE_BEGIN();
-  tir::Parallel(state_, this->GetSRef(loop_rv));
+  tir::Parallel(state_, this->GetSRef(loop_rv), force);
   this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("parallel", this->error_render_level_);
 }
@@ -564,6 +564,13 @@ BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
 /******** Schedule: Blockize & Tensorize ********/
 /******** Schedule: Annotation ********/
 /******** Schedule: Misc ********/
+void ConcreteScheduleNode::LevelSchedule(const LoopRV& loop_rv, int level_number,
+                   const Buffer& level_num_buf, const Buffer& level_idx_buf){
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::LevelSchedule(state_, this->GetSRef(loop_rv), level_number, level_num_buf, level_idx_buf);
+  TVM_TIR_SCHEDULE_END("level-schedule", this->error_render_level_);
+  this->state_->DebugVerify();
+}
 
 }  // namespace tir
 }  // namespace tvm
