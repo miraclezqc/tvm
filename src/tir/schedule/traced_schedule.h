@@ -65,7 +65,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   /******** Schedule: Manipulate ForKind ********/
   void Parallel(const LoopRV& loop_rv, bool force = 0) final;
   void Vectorize(const LoopRV& loop_rv) final;
-  void Bind(const LoopRV& loop_rv, const String& thread_axis) final;
+  void Bind(const LoopRV& loop_rv, const String& thread_axis, bool force = 0) final;
   void Unroll(const LoopRV& loop_rv) final;
   /******** Schedule: Insert cache stages ********/
   BlockRV CacheRead(const BlockRV& block_rv, int read_buffer_index,

@@ -462,7 +462,7 @@ void ConcreteScheduleNode::Vectorize(const LoopRV& loop_rv) {
   TVM_TIR_SCHEDULE_END("vectorize", this->error_render_level_);
 }
 
-void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis) {
+void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis, bool force) {
   if (thread_axis == "vthread") {
     LOG(WARNING) << "`vthread` is legacy behavior and is going to be deprecated. Please use "
                     "`vthread.x`, `vthread.y` and `vthread.z` instead";
@@ -470,7 +470,7 @@ void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis
   TVM_TIR_SCHEDULE_BEGIN();
   tir::Bind(state_, this->GetSRef(loop_rv),
             IterVar(/*dom=*/Range(nullptr), /*var=*/Var(thread_axis), /*iter_type=*/kThreadIndex,
-                    /*thread_tag=*/thread_axis));
+                    /*thread_tag=*/thread_axis), force);
   this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("bind", this->error_render_level_);
 }

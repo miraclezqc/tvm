@@ -182,8 +182,8 @@ void Vectorize(ScheduleState self, const StmtSRef& loop_sref) {
   ParallelizeComputation(self, loop_sref, ForKind::kVectorized, NullOpt);
 }
 
-void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread_axis) {
-  ParallelizeComputation(self, loop_sref, ForKind::kThreadBinding, thread_axis);
+void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread_axis, bool force) {
+  ParallelizeComputation(self, loop_sref, ForKind::kThreadBinding, thread_axis, force);
 }
 
 void Unroll(ScheduleState self, const StmtSRef& loop_sref) {

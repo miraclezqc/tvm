@@ -772,7 +772,7 @@ class Schedule(Object):
         _ffi_api.ScheduleVectorize(self, loop)  # type: ignore # pylint: disable=no-member
 
     @type_checked
-    def bind(self, loop: LoopRV, thread_axis: str) -> None:
+    def bind(self, loop: LoopRV, thread_axis: str, force = False) -> None:
         """Bind the input loop to the given thread axis. It requires:
         1) The scope block that the loop is in should have stage-pipeline property
         2) All the blocks under the loop are complete blocks or reduction blocks, and have affine
@@ -833,7 +833,7 @@ class Schedule(Object):
                             B[vi, vj] = A[vi, vj] * 2.0
 
         """
-        _ffi_api.ScheduleBind(self, loop, thread_axis)  # type: ignore # pylint: disable=no-member
+        _ffi_api.ScheduleBind(self, loop, thread_axis, force)  # type: ignore # pylint: disable=no-member
 
     @type_checked
     def unroll(self, loop: LoopRV) -> None:

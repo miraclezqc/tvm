@@ -205,8 +205,8 @@ void TracedScheduleNode::Vectorize(const LoopRV& loop_rv) {
                                       /*outputs=*/{}));
 }
 
-void TracedScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis) {
-  ConcreteScheduleNode::Bind(loop_rv, thread_axis);
+void TracedScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis, bool force) {
+  ConcreteScheduleNode::Bind(loop_rv, thread_axis, force);
 
   static const InstructionKind& kind = InstructionKind::Get("Bind");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,

@@ -318,7 +318,7 @@ class ScheduleNode : public runtime::Object {
    * \param loop_rv The loop to be bound to the thread axis
    * \param thread_axis The thread axis to be bound to the loop
    */
-  virtual void Bind(const LoopRV& loop_rv, const String& thread_axis) = 0;
+  virtual void Bind(const LoopRV& loop_rv, const String& thread_axis, bool force = 0) = 0;
   /*!
    * \brief Unroll the input loop. It requires nothing
    * \param loop_rv The loop to be unrolled
