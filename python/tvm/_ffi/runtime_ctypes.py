@@ -218,6 +218,7 @@ class Device(ctypes.Structure):
         "c": 1,
         "hybrid": 1,
         "composite": 1,
+        "saca": 2,
         "cuda": 2,
         "nvptx": 2,
         "cl": 4,

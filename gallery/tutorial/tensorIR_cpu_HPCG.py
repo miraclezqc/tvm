@@ -1,3 +1,4 @@
+import os
 import time
 import tvm
 import math
@@ -209,15 +210,14 @@ def Restriction(Rc: T.handle, R: T.handle, Axf: T.handle, nc: T.int32):
 def Prolongation(Xf: T.handle, Xc: T.handle, nc: T.int32):
     T.func_attr({"global_symbol": "Prolongation", "tir.noalias": True})
     xf = T.match_buffer(Xf, (nc*2*nc*2*nc*2), dtype="float64")
-    xf_cp = T.match_buffer(Xf, (nc*2*nc*2*nc*2), dtype="float64")
     xc = T.match_buffer(Xc, (nc*nc*nc), dtype="float64")
 
-    for i,j,k in T.grid(nc*2,nc*2,nc*2):
+    for i,j,k in T.grid(nc,nc,nc):
         with T.block("outer"):
             vi,vj,vk = T.axis.remap("SSS",[i,j,k])
-            vc = T.axis.S(nc*nc*nc, (vi/2)*nc*nc+(vj/2)*nc+(vk/2))
-            vf = T.axis.S(nc*2*nc*2*nc*2, (vi)*(nc*2)*(nc*2)+(vj)*(nc*2)+(vk))
-            xf[vf] = xf_cp[vf] + xc[vc]
+            vc = T.axis.S(nc*nc*nc, (vi)*nc*nc+(vj)*nc+(vk))
+            vf = T.axis.S(nc*2*nc*2*nc*2, (vi*2)*(nc*2)*(nc*2)+(vj*2)*(nc*2)+(vk*2))
+            xf[vf] = xf[vf] + xc[vc]
 
 class HPCG_Example():
     def __init__(self, dim=3, N=256, n_mg_levels=4, real="float64", ctx = tvm.cpu()):
@@ -293,15 +293,6 @@ class HPCG_Example():
 
     def waxpby(self, alpha, x, beta, y, w):
         self.waxpby_mod(alpha, x, beta, y, w, self.nrow)
-        
-    # def dot(self, x, y):
-    #     sch = tvm.tir.Schedule(DotProduct)
-    #     i, = sch.get_loops(sch.get_block("outer"))
-    #     sch.parallel(i)
-    #     mod = tvm.build(sch.mod, target="llvm")
-    #     res = tvm.nd.empty((1,), dtype=self.real, device=self.ctx)
-    #     mod(x, y, res, self.num_threads, self.nrow)
-    #     return res.asnumpy()[0]
 
     def dot_rfactor(self, x, y):
         res = tvm.nd.empty((1,), dtype=self.real, device=self.ctx)
@@ -330,8 +321,8 @@ class HPCG_Example():
             self.zero_vec(xf, level)
             if self.ls_opt and level == 0:
                 self.symgs_ls_mod(self.Aval[level], self.Aidx[level], xf, rf, self.N, self.nnzinrow, self.level_num, self.level_idx)
-            else:
-                self.symgs(self.Aval[level], self.Aidx[level], xf, rf, level)
+            # else:
+            #     self.symgs(self.Aval[level], self.Aidx[level], xf, rf, level)
             self.spmv(self.Aval[level], self.Aidx[level], xf, self.Axf[level], level)
             self.restrication(self.rc[level], rf, self.Axf[level], level)
             
@@ -339,7 +330,7 @@ class HPCG_Example():
         rf = self.rc[-1]
         bot = self.n_mg_levels-1
         self.zero_vec(xf, bot)
-        self.symgs(self.Aval[bot], self.Aidx[bot], xf, rf, bot)
+        # self.symgs(self.Aval[bot], self.Aidx[bot], xf, rf, bot)
 
         for level in reversed(range(self.n_mg_levels-1)):
             if level != 0 :
@@ -351,8 +342,8 @@ class HPCG_Example():
             self.prolongation(xf, self.xc[level], level)
             if self.ls_opt and level == 0:
                 self.symgs_ls_mod(self.Aval[level], self.Aidx[level], xf, rf, self.N, self.nnzinrow, self.level_num, self.level_idx)
-            else:
-                self.symgs(self.Aval[level], self.Aidx[level], xf, rf, level)
+            # else:
+            #     self.symgs(self.Aval[level], self.Aidx[level], xf, rf, level)
 
     def init(self):
         for level in range(self.n_mg_levels):
@@ -403,7 +394,7 @@ class HPCG_Example():
             normr = math.sqrt(self.dot_rfactor(self.r, self.r))
 
             iter += 1
-            print("iter",iter, " norm=", normr, "used time=", f'{time.time() - t:.3f} s')
+            print("iter",iter, " norm=", normr/normr0, "used time=", f'{time.time() - t:.3f} s')
 
     def generate_module(self):
         # GenerateProblem
@@ -485,45 +476,52 @@ class HPCG_Example():
         i,j,k = sch.get_loops(sch.get_block("outer"))
         fuse = sch.fuse(i,j,k)
         spl_idx = sch.split(fuse, factors=[self.num_threads,None])
-        sch.parallel(spl_idx[0])
+        sch.parallel(spl_idx[0], force = 1)
         self.prolongation_mod = tvm.build(sch.mod, target="llvm -opt-level=3")
 
     def level_schedule_analysis(self):
-        for i in range(-1,2,1):
-            for j in range(-1,2,1):
-                for k in range(-1,2,1):
-                    self.stencil_list.append((i,j,k))
-        print(self.stencil_list)
-        level_idx = np.zeros((self.nrow,2), dtype="int32")
-        level_idx[:,0] = np.arange(self.nrow) 
-        t0 = time.time()
-        for i in range(self.N):
-             for j in range(self.N):
-                for k in range(self.N):
-                    cur_idx =  i * (self.N ** 2) + j * self.N + k
-                    level_idx[cur_idx][1] = 0
-                    max_level = -1
-                    for n in range(len(self.stencil_list)):
-                        bi = self.stencil_list[n][0]
-                        bj = self.stencil_list[n][1]
-                        bk = self.stencil_list[n][2]
-                        if  i+bi >=0 and i+bi < self.N and j + bj >=0 and j + bj < self.N and k + bk >=0 and k + bk < self.N:
-                            idx = (i+bi) * (self.N ** 2) + (j + bj) * self.N + k + bk
-                            if idx < cur_idx and level_idx[idx][1] > max_level:
-                                max_level =  level_idx[idx][1]
-                    level_idx[cur_idx][1] = max_level + 1
-        self.level_number = level_idx[-1][1] + 1
-        level_num = np.zeros((self.level_number+1), dtype="int32")
-        sort = level_idx[level_idx[:,1].argsort()]
-        cur_idx = 1
-        for i in range(1, self.nrow):
-            if(sort[i-1][1] != sort[i][1]):
-                level_num[cur_idx] = i 
-                cur_idx += 1
-        level_num[cur_idx] = self.nrow 
-        
-        self.level_idx = tvm.nd.array(sort[:,0].astype("int32"), self.ctx)
-        self.level_num = tvm.nd.array(level_num.astype("int32"), self.ctx)
+        if os.path.exists("level_num"+str(self.N)+".npy") and os.path.exists("level_idx"+str(self.N)+".npy"):
+            self.level_idx = tvm.nd.array(np.load("level_idx"+str(self.N)+".npy"), self.ctx)
+            self.level_num = tvm.nd.array(np.load("level_num"+str(self.N)+".npy"), self.ctx)
+            self.level_number = len(np.load("level_num"+str(self.N)+".npy")) - 1
+        else :
+            for i in range(-1,2,1):
+                for j in range(-1,2,1):
+                    for k in range(-1,2,1):
+                        self.stencil_list.append((i,j,k))
+            print(self.stencil_list)
+            level_idx = np.zeros((self.nrow,2), dtype="int32")
+            level_idx[:,0] = np.arange(self.nrow) 
+            t0 = time.time()
+            for i in range(self.N):
+                for j in range(self.N):
+                    for k in range(self.N):
+                        cur_idx =  i * (self.N ** 2) + j * self.N + k
+                        level_idx[cur_idx][1] = 0
+                        max_level = -1
+                        for n in range(len(self.stencil_list)):
+                            bi = self.stencil_list[n][0]
+                            bj = self.stencil_list[n][1]
+                            bk = self.stencil_list[n][2]
+                            if  i+bi >=0 and i+bi < self.N and j + bj >=0 and j + bj < self.N and k + bk >=0 and k + bk < self.N:
+                                idx = (i+bi) * (self.N ** 2) + (j + bj) * self.N + k + bk
+                                if idx < cur_idx and level_idx[idx][1] > max_level:
+                                    max_level =  level_idx[idx][1]
+                        level_idx[cur_idx][1] = max_level + 1
+            self.level_number = level_idx[-1][1] + 1
+            level_num = np.zeros((self.level_number+1), dtype="int32")
+            sort = level_idx[level_idx[:,1].argsort()]
+            cur_idx = 1
+            for i in range(1, self.nrow):
+                if(sort[i-1][1] != sort[i][1]):
+                    level_num[cur_idx] = i 
+                    cur_idx += 1
+            level_num[cur_idx] = self.nrow 
+            
+            self.level_idx = tvm.nd.array(sort[:,0].astype("int32"), self.ctx)
+            self.level_num = tvm.nd.array(level_num.astype("int32"), self.ctx)
+            np.save("level_num"+str(self.N)+".npy", level_num.astype("int32"))
+            np.save("level_idx"+str(self.N)+".npy", sort[:,0].astype("int32"))
 
         # level schedule primitive
         append_list = [tvm.tir.decl_buffer((self.level_number+1), name="level_num", dtype="int32"),  tvm.tir.decl_buffer((self.nrow), name="level_idx", dtype="int32")]
